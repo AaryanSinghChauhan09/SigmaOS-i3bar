@@ -100,3 +100,125 @@ impl Component {
         Self { name: "SigmaOS Component" }
     }
 }
+
+// ─── i3bar domain model ───────────────────────────────────────────────
+
+/// i3bar position
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum I3BarPosition { Top, Bottom }
+
+/// i3bar block kind
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BlockKind {
+    WorkspaceButtons, Tray, Clock, Battery, Network,
+    Custom(String),
+}
+
+/// i3bar block
+#[derive(Debug, Clone)]
+pub struct I3Block {
+    pub name: String,
+    pub kind: BlockKind,
+    pub section: String, // left/center/right
+    pub command: Option<String>,
+    pub interval: u32,
+}
+
+impl I3Block {
+    pub fn new(name: &str, kind: BlockKind, section: &str) -> Self {
+        Self { name: name.into(), kind, section: section.into(), command: None, interval: 0 }
+    }
+
+    pub fn with_command(mut self, cmd: &str) -> Self {
+        self.command = Some(cmd.into());
+        self
+    }
+}
+
+/// i3bar
+#[derive(Debug, Clone)]
+pub struct I3Bar {
+    pub position: I3BarPosition,
+    pub height: u32,
+    pub blocks: Vec<I3Block>,
+    pub visible: bool,
+}
+
+impl I3Bar {
+    pub fn new(position: I3BarPosition) -> Self {
+        Self { position, height: 25, blocks: vec![], visible: true }
+    }
+
+    pub fn add_block(&mut self, block: I3Block) -> bool {
+        if self.blocks.iter().any(|b| b.name == block.name) { return false; }
+        self.blocks.push(block);
+        true
+    }
+
+    pub fn remove_block(&mut self, name: &str) -> bool {
+        let before = self.blocks.len();
+        self.blocks.retain(|b| b.name != name);
+        self.blocks.len() < before
+    }
+
+    pub fn blocks_in(&self, section: &str) -> Vec<&I3Block> {
+        self.blocks.iter().filter(|b| b.section == section).collect()
+    }
+
+    pub fn toggle(&mut self) { self.visible = !self.visible; }
+}
+
+#[cfg(test)]
+mod i3bar_tests {
+    use super::*;
+
+    #[test]
+    fn test_position() {
+        assert_eq!(I3BarPosition::Top as u8, I3BarPosition::Top as u8);
+        assert_ne!(I3BarPosition::Top, I3BarPosition::Bottom);
+    }
+
+    #[test]
+    fn test_block_creation() {
+        let block = I3Block::new("clock", BlockKind::Clock, "right")
+            .with_command("date +%H:%M");
+        assert_eq!(block.name, "clock");
+        assert!(block.command.is_some());
+        assert_eq!(block.section, "right");
+    }
+
+    #[test]
+    fn test_bar_blocks() {
+        let mut bar = I3Bar::new(I3BarPosition::Top);
+        bar.add_block(I3Block::new("workspaces", BlockKind::WorkspaceButtons, "left"));
+        bar.add_block(I3Block::new("tray", BlockKind::Tray, "right"));
+        bar.add_block(I3Block::new("clock", BlockKind::Clock, "right"));
+        
+        assert_eq!(bar.blocks.len(), 3);
+        assert_eq!(bar.blocks_in("left").len(), 1);
+        assert_eq!(bar.blocks_in("right").len(), 2);
+    }
+
+    #[test]
+    fn test_duplicate_block_rejected() {
+        let mut bar = I3Bar::new(I3BarPosition::Bottom);
+        assert!(bar.add_block(I3Block::new("clock", BlockKind::Clock, "right")));
+        assert!(!bar.add_block(I3Block::new("clock", BlockKind::Clock, "left")));
+    }
+
+    #[test]
+    fn test_remove_block() {
+        let mut bar = I3Bar::new(I3BarPosition::Top);
+        bar.add_block(I3Block::new("tray", BlockKind::Tray, "right"));
+        assert!(bar.remove_block("tray"));
+        assert!(bar.blocks.is_empty());
+    }
+
+    #[test]
+    fn test_toggle_visibility() {
+        let mut bar = I3Bar::new(I3BarPosition::Bottom);
+        assert!(bar.visible);
+        bar.toggle();
+        assert!(!bar.visible);
+    }
+}
